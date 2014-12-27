@@ -1,7 +1,7 @@
 'use strict';
 
-var mInternalFeed = require('microstar-internal-feed')
-var mFeed = require('microstar-feed')
+var mInternalchain = require('microstar-internal-chain')
+var mChain = require('microstar-chain')
 var pull = require('pull-stream')
 var serializer = require('pull-serializer')
 var r = require('ramda')
@@ -13,8 +13,7 @@ var unwind = require('pull-unwind')
 // settings = {
 //   crypto: JS,
 //   keys: JS,
-//   db: db,
-//   state_feed_id: String
+//   db: db
 // }
 
 module.exports = function (settings) {
@@ -29,7 +28,8 @@ module.exports = function (settings) {
 // If you need indexes on any documents, export them so that they
 // can be added.
 module.exports.indexes = [
-  ['pub_key', 'feed_id', 'sequence']
+  ['pub_key', 'chain_id', 'sequence'],
+  ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence']
 ]
 
 
@@ -43,39 +43,40 @@ function unfollow (settings, ids, callback) {
 
 // [{
 //   pub_key: String,
-//   feed_id: String
+//   chain_id: String
 // }, true]
 function following (settings, content, callback) {
-  var message;
+  var chain_id = settings.chain_id || 'microstar-replicate'
+  var message
   message.type = 'microstar-replicate:follows'
-  message.feed_id = 'microstar-replicate'
+  message.chain_id = chain_id
   message.content = content
-  mInternalFeed.writeOne(settings, message, callback)
+  mInternalchain.writeOne(settings, message, callback)
 }
 
 
-function request (settings) {
-  var feed_id = settings.state_feed_id || 'microstar-replicate'
+function getAllFollowing (settings) {
+  var chain_id = settings.chain_id || 'microstar-replicate'
   return pull(
     // Get following messages from self
-    mInternalFeed.read(settings, {
-      k: ['pub_key', 'feed_id', 'type', 'content[0]', 'sequence'],
-      v: [settings.pub_key, feed_id, 'follows']
+    mInternalchain.read(settings, {
+      k: ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence'],
+      v: [settings.pub_key, chain_id, 'follows']
     }),
-    // Get last (by sequence) status of every feed
+    // Get last (by sequence) status of every chain
     groupLast('value.content[0]'),
-    // Only keep feeds with status = true
+    // Only keep chains with status = true
     pull.filter(function (message) {
       return message.content[1]
     }),
-    // Get latest messages in feed
+    // Get latest messages in chain
     resolveLatestMessages(settings)
   )
 }
 
 // Retrieves the last message of every group.
 // Groups are determined by testing the equality of
-// a keypath. For instance, the keypath could be a feed_id.
+// a keypath. For instance, the keypath could be a chain_id.
 // {a: 1}, {a: 2}, {a: 2}, {a: 2}, {a: 3}, {a: 3},
 //    ^                       ^               ^
 function groupLast (keypath) {
@@ -94,9 +95,9 @@ function groupLast (keypath) {
 function resolveLatestMessages (settings) {
   return pull.asyncMap(function (message, callback) {
     // Get highest sequence (last message)
-    mFeed.readOne(settings, {
-      k: ['pub_key', 'feed_id', 'sequence'],
-      v: [message.content[1].pub_key, message.content[1].feed_id],
+    mChain.readOne(settings, {
+      k: ['pub_key', 'chain_id', 'sequence'],
+      v: [message.content[1].pub_key, message.content[1].chain_id],
       peek: 'last'
     }, callback)
   })
@@ -106,9 +107,9 @@ function server (settings) {
   return pull(
     pull.map(function (message) {
       // Gather all messages later than latest
-      return mFeed.read(settings, {
-        k: ['pub_key', 'feed_id', 'sequence'],
-        v: [message.pub_key, message.feed_id, [message.sequence, null]]
+      return mChain.read(settings, {
+        k: ['pub_key', 'chain_id', 'sequence'],
+        v: [message.pub_key, message.chain_id, [message.sequence, null]]
       })
     }),
     // And flatten into one stream
@@ -116,9 +117,11 @@ function server (settings) {
   )
 }
 
-var client = serializer({
-  source: request,
-  sink: mFeed.save
-})
-
-
+function client (settings, ) {
+  // Need to figure out how to get all latest messages into place to
+  // validate on copy.
+  return serializer({
+    source: getAllFollowing(settings),
+    sink: mChain.copy(settings, )
+  })
+}
