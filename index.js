@@ -8,7 +8,6 @@ var r = require('ramda')
 var access = require('safe-access')
 var pairs = require('pull-pairs')
 var equal = require('deep-equal')
-var unwind = require('pull-unwind')
 
 // settings = {
 //   crypto: JS,
@@ -54,30 +53,10 @@ function following (settings, content, callback) {
   mInternalchain.writeOne(settings, message, callback)
 }
 
-
-function getAllFollowing (settings) {
-  var chain_id = settings.chain_id || 'microstar-replicate'
-  return pull(
-    // Get following messages from self
-    mInternalchain.read(settings, {
-      k: ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence'],
-      v: [settings.pub_key, chain_id, 'follows']
-    }),
-    // Get last (by sequence) status of every chain
-    groupLast('value.content[0]'),
-    // Only keep chains with status = true
-    pull.filter(function (message) {
-      return message.content[1]
-    }),
-    // Get latest messages in chain
-    resolveLatestMessages(settings)
-  )
-}
-
 // Retrieves the last message of every group.
 // Groups are determined by testing the equality of
 // a keypath. For instance, the keypath could be a chain_id.
-// {a: 1}, {a: 2}, {a: 2}, {a: 2}, {a: 3}, {a: 3},
+// {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
 //    ^                       ^               ^
 function groupLast (keypath) {
   return pull(
@@ -88,6 +67,25 @@ function groupLast (keypath) {
       return false
     }),
     pull.filter(r.identity)
+  )
+}
+
+function getAllFollowing (settings) {
+  var chain_id = settings.chain_id || 'microstar-replicate'
+  return pull(
+    // Get following messages from self
+    mInternalchain.read(settings, {
+      k: ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence'],
+      v: [settings.keys.publicKey, chain_id, 'follows']
+    }),
+    // Get last (by sequence) status of every chain
+    groupLast('content[0]'),
+    // Only keep chains with status = true
+    pull.filter(function (message) {
+      return message.content[1]
+    }),
+    // Get latest messages in chain
+    resolveLatestMessages(settings)
   )
 }
 
@@ -107,21 +105,57 @@ function server (settings) {
   return pull(
     pull.map(function (message) {
       // Gather all messages later than latest
-      return mChain.read(settings, {
-        k: ['pub_key', 'chain_id', 'sequence'],
-        v: [message.pub_key, message.chain_id, [message.sequence, null]]
-      })
+      pull(
+        mChain.read(settings, {
+          k: ['pub_key', 'chain_id', 'sequence'],
+          v: [message.pub_key, message.chain_id, [message.sequence, null]]
+        }),
+        pull.collect(function (err, arr) {
+          return arr
+        })
+      )
     }),
-    // And flatten into one stream
-    unwind()
+    pull.flatten()
   )
 }
 
-function client (settings, ) {
-  // Need to figure out how to get all latest messages into place to
+function replaceFirst (settings) {
+  return pull(
+    pairs(function (a, b) {
+      return [a, b]
+    }),
+    pull.asyncMap(function (pair, callback) {
+      // At the transition between chains, replace the first in chain with one
+      // from db.
+      if (pair[0].chain_id !== pair[1].chain_id) {
+        mChain.readOne(settings, {
+          k: ['pub_key', 'chain_id', 'sequence'],
+          v: [pair[1].pub_key, pair[1].chain_id, pair[1].sequence]
+        }, callback)
+      }
+      return callback(null, pair[1])
+    })
+  )
+}
+
+function client (settings) {
+  // Need to figure out how to get all the initial messages into place to
   // validate on copy.
+  //
+  // validate without `initial` arg? Would need to do a query for each message
+  // better to recognize initial messages some other way and replace only them
+  //
+  // Replace initial messages and validate forward or compare for equality???za
+  //
+  // identify initial messages -> replace them with messages from db
+  // how to identify initial messages? groupFirst function like groupLast
+  // To use groupFirst results in filtered stream - would need to tap and then
+  // reconstitute.. hmm.
+  //
+  // Otherwise, make operation special for this...
+  //
   return serializer({
     source: getAllFollowing(settings),
-    sink: mChain.copy(settings, )
+    sink: mChain.copy()
   })
 }
