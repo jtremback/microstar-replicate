@@ -20,7 +20,9 @@ module.exports = function (settings) {
     client: client.bind(null, settings),
     server: server.bind(null, settings),
     follow: follow.bind(null, settings),
-    unfollow: unfollow.bind(null, settings)
+    followOne: followOne.bind(null, settings),
+    unfollow: unfollow.bind(null, settings),
+    unfollowOne: unfollowOne.bind(null, settings)
   }
 }
 
@@ -29,28 +31,69 @@ module.exports = function (settings) {
 module.exports.indexes = [
   ['pub_key', 'chain_id', 'sequence'],
   ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence']
-]
+].concat(mChain.indexes)
 
 
-function follow (settings, ids, callback) {
-  following(settings, [ids, true], callback)
+function follow (settings, callback) {
+  return pull(
+    pull.map(function (id) {
+      return [id, true]
+    }),
+    following(settings, callback)
+  )
 }
 
-function unfollow (settings, ids, callback) {
-  following(settings, [ids, false], callback)
+function followOne (settings, id, callback) {
+  pull(
+    pull.values([id]),
+    follow(settings, callback)
+  )
+}
+
+function unfollow (settings, callback) {
+  return pull(
+    pull.map(function (id) {
+      return [id, false]
+    }),
+    following(settings, callback)
+  )
+}
+
+function unfollowOne (settings, id, callback) {
+  pull(
+    pull.values([id]),
+    unfollow(settings, callback)
+  )
 }
 
 // [{
 //   pub_key: String,
 //   chain_id: String
 // }, true]
-function following (settings, content, callback) {
-  var chain_id = settings.chain_id || 'microstar-replicate'
-  var message
-  message.type = 'microstar-replicate:follows'
-  message.chain_id = chain_id
-  message.content = content
-  mInternalchain.writeOne(settings, message, callback)
+// function following (settings, content, callback) {
+//   var chain_id = settings.chain_id || 'microstar-replicate'
+//   var message
+//   message.type = 'microstar-replicate:follows'
+//   message.chain_id = chain_id
+//   message.content = content
+//   mInternalchain.writeOne(settings, message, callback)
+// }
+
+// [{
+//   pub_key: String,
+//   chain_id: String
+// }, true]
+function following (settings, callback) {
+  return pull(
+    pull.map(function (content) {
+      return {
+        type: 'microstar-replicate:follows',
+        chain_id: settings.chain_id || 'microstar-replicate',
+        content: content
+      }
+    }),
+    mInternalchain.writeOne(settings, callback)
+  )
 }
 
 // Retrieves the last message of every group.
@@ -89,7 +132,6 @@ function getAllFollowing (settings) {
   )
 }
 
-
 function resolveLatestMessages (settings) {
   return pull.asyncMap(function (message, callback) {
     // Get highest sequence (last message)
@@ -114,46 +156,11 @@ function server (settings) {
           return arr
         })
       )
-    }),
-    pull.flatten()
-  )
-}
-
-function replaceFirst (settings) {
-  return pull(
-    pairs(function (a, b) {
-      return [a, b]
-    }),
-    pull.asyncMap(function (pair, callback) {
-      // At the transition between chains, replace the first in chain with one
-      // from db.
-      if (pair[0].chain_id !== pair[1].chain_id) {
-        mChain.readOne(settings, {
-          k: ['pub_key', 'chain_id', 'sequence'],
-          v: [pair[1].pub_key, pair[1].chain_id, pair[1].sequence]
-        }, callback)
-      }
-      return callback(null, pair[1])
     })
   )
 }
 
 function client (settings) {
-  // Need to figure out how to get all the initial messages into place to
-  // validate on copy.
-  //
-  // validate without `initial` arg? Would need to do a query for each message
-  // better to recognize initial messages some other way and replace only them
-  //
-  // Replace initial messages and validate forward or compare for equality???za
-  //
-  // identify initial messages -> replace them with messages from db
-  // how to identify initial messages? groupFirst function like groupLast
-  // To use groupFirst results in filtered stream - would need to tap and then
-  // reconstitute.. hmm.
-  //
-  // Otherwise, make operation special for this...
-  //
   return serializer({
     source: getAllFollowing(settings),
     sink: mChain.copy()
