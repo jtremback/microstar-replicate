@@ -29,8 +29,8 @@ module.exports = function (settings) {
 // If you need indexes on any documents, export them so that they
 // can be added.
 module.exports.indexes = [
-  ['pub_key', 'chain_id', 'sequence'],
-  ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence']
+  ['public_key', 'chain_id', 'sequence'],
+  ['public_key', 'chain_id', 'type', 'content[0]', 'sequence']
 ].concat(mChain.indexes)
 
 
@@ -67,7 +67,7 @@ function unfollowOne (settings, id, callback) {
 }
 
 // [{
-//   pub_key: String,
+//   public_key: String,
 //   chain_id: String
 // }, true]
 // function following (settings, content, callback) {
@@ -80,7 +80,7 @@ function unfollowOne (settings, id, callback) {
 // }
 
 // [{
-//   pub_key: String,
+//   public_key: String,
 //   chain_id: String
 // }, true]
 function following (settings, callback) {
@@ -92,7 +92,7 @@ function following (settings, callback) {
         content: content
       }
     }),
-    mInternalchain.writeOne(settings, callback)
+    mInternalchain.write(settings, callback)
   )
 }
 
@@ -118,8 +118,8 @@ function getAllFollowing (settings) {
   return pull(
     // Get following messages from self
     mInternalchain.read(settings, {
-      k: ['pub_key', 'chain_id', 'type', 'content[0]', 'sequence'],
-      v: [settings.keys.publicKey, chain_id, 'follows']
+      k: ['public_key', 'chain_id', 'type', 'content[0]', 'sequence'],
+      v: [settings.keys.public_key, chain_id, 'follows']
     }),
     // Get last (by sequence) status of every chain
     groupLast('content[0]'),
@@ -136,8 +136,8 @@ function resolveLatestMessages (settings) {
   return pull.asyncMap(function (message, callback) {
     // Get highest sequence (last message)
     mChain.readOne(settings, {
-      k: ['pub_key', 'chain_id', 'sequence'],
-      v: [message.content[1].pub_key, message.content[1].chain_id],
+      k: ['public_key', 'chain_id', 'sequence'],
+      v: [message.content[1].public_key, message.content[1].chain_id],
       peek: 'last'
     }, callback)
   })
@@ -149,8 +149,8 @@ function server (settings) {
       // Gather all messages later than latest
       pull(
         mChain.read(settings, {
-          k: ['pub_key', 'chain_id', 'sequence'],
-          v: [message.pub_key, message.chain_id, [message.sequence, null]]
+          k: ['public_key', 'chain_id', 'sequence'],
+          v: [message.public_key, message.chain_id, [message.sequence, null]]
         }),
         pull.collect(function (err, arr) {
           return arr
