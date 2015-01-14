@@ -1,12 +1,12 @@
 'use strict';
 
-var mInternalchain = require('microstar-internal-chain')
-var mChain = require('microstar-chain')
+var mInternalChain = require('../microstar-internal-chain')
+var mChain = require('../microstar-chain')
 var pull = require('pull-stream')
 var serializer = require('pull-serializer')
-var r = require('ramda')
+// var r = require('ramda')
 var access = require('safe-access')
-var pairs = require('pull-pairs')
+// var pairs = require('pull-pairs')
 var equal = require('deep-equal')
 
 // settings = {
@@ -15,18 +15,16 @@ var equal = require('deep-equal')
 //   db: db
 // }
 
-module.exports = function (settings) {
-  return {
-    client: client.bind(null, settings),
-    server: server.bind(null, settings),
-    follow: follow.bind(null, settings),
-    followOne: followOne.bind(null, settings),
-    unfollow: unfollow.bind(null, settings),
-    unfollowOne: unfollowOne.bind(null, settings)
-  }
+module.exports = {
+  client: client,
+  server: server,
+  follow: follow,
+  followOne: followOne,
+  unfollow: unfollow,
+  unfollowOne: unfollowOne
 }
 
-// If you need indexes on any documents, export them so that they
+// If you need indexes on all documents, export them so that they
 // can be added.
 module.exports.indexes = [
   ['public_key', 'chain_id', 'sequence'],
@@ -70,29 +68,17 @@ function unfollowOne (settings, id, callback) {
 //   public_key: String,
 //   chain_id: String
 // }, true]
-// function following (settings, content, callback) {
-//   var chain_id = settings.chain_id || 'microstar-replicate'
-//   var message
-//   message.type = 'microstar-replicate:follows'
-//   message.chain_id = chain_id
-//   message.content = content
-//   mInternalchain.writeOne(settings, message, callback)
-// }
-
-// [{
-//   public_key: String,
-//   chain_id: String
-// }, true]
 function following (settings, callback) {
   return pull(
     pull.map(function (content) {
+      debugger
       return {
         type: 'microstar-replicate:follows',
         chain_id: settings.chain_id || 'microstar-replicate',
         content: content
       }
     }),
-    mInternalchain.write(settings, callback)
+    mInternalChain.write(settings, callback)
   )
 }
 
@@ -101,15 +87,36 @@ function following (settings, callback) {
 // a keypath. For instance, the keypath could be a chain_id.
 // {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
 //    ^                       ^               ^
+// function groupLast0 (keypath) {
+//   return pull(
+//     pairs(function mapper (a, b) {
+//       if (!equal(access(a, keypath), access(b, keypath))) {
+//         return a
+//       }
+//       return false
+//     }),
+//     pull.filter(r.identity)
+//   )
+// }
+
+// Return a stream of the last message of every group.
+// Groups are determined by testing the equality of
+// a keypath. For instance, the keypath could be a chain_id.
+// {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
+//     ^                          ^                 ^
 function groupLast (keypath) {
+  var prev
   return pull(
-    pairs(function mapper (a, b) {
-      if (!equal(access(a, keypath), access(b, keypath))) {
-        return a
+    pull.map(function (message) {
+      if (!equal(access(prev, keypath), access(message, keypath))) {
+        return prev
       }
+      prev = message
       return false
     }),
-    pull.filter(r.identity)
+    pull.filter(function (a) {
+      return a
+    })
   )
 }
 
@@ -117,7 +124,7 @@ function getAllFollowing (settings) {
   var chain_id = settings.chain_id || 'microstar-replicate'
   return pull(
     // Get following messages from self
-    mInternalchain.read(settings, {
+    mInternalChain.read(settings, {
       k: ['public_key', 'chain_id', 'type', 'content[0]', 'sequence'],
       v: [settings.keys.public_key, chain_id, 'follows']
     }),
@@ -148,10 +155,7 @@ function server (settings) {
     pull.map(function (message) {
       // Gather all messages later than latest
       pull(
-        mChain.read(settings, {
-          k: ['public_key', 'chain_id', 'sequence'],
-          v: [message.public_key, message.chain_id, [message.sequence, null]]
-        }),
+        mChain.sequential(settings, message.public_key, message.chain_id, message.sequence),
         pull.collect(function (err, arr) {
           return arr
         })

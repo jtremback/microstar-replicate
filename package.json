@@ -17,7 +17,14 @@
   },
   "homepage": "https://github.com/jtremback/microstar-replicate",
   "dependencies": {
+    "deep-equal": "^0.2.1",
     "pull-serializer": "^0.3.1",
-    "pull-stream": "^2.26.0"
+    "pull-stream": "^2.26.0",
+    "safe-access": "^0.1.0"
+  },
+  "devDependencies": {
+    "level-test": "^1.6.6",
+    "pull-level": "^1.2.0",
+    "pull-ws-server": "^1.1.2"
   }
 }

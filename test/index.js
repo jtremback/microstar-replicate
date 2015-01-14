@@ -10,82 +10,83 @@
 // and partially on the other, and C is only on one node.
 
 var node1_messages = [{
-  content: 'Fa',
+  content: 'fooA',
   timestamp: 1418804138168,
-  type: 'holiday-carols:syllable',
-  chain_id: 'holiday-carols:2014'
+  type: 'test',
+  chain_id: 'A'
 }, {
-  content: 'La',
+  content: 'barA',
   timestamp: 1418804138169,
-  type: 'holiday-carols:syllable',
-  chain_id: 'holiday-carols:2014'
+  type: 'test',
+  chain_id: 'A'
 }, {
-  content: 'Laa',
+  content: 'bazA',
   timestamp: 1418804138170,
-  type: 'holiday-carols:syllable',
-  chain_id: 'holiday-carols:2014'
+  type: 'test',
+  chain_id: 'A'
 }, {
-  content: 'one',
+  content: 'fooB',
   timestamp: 1418804138158,
-  type: 'number',
-  chain_id: 'numbers'
+  type: 'test',
+  chain_id: 'B'
 }, {
-  content: 'two',
+  content: 'barB',
   timestamp: 1418804138159,
-  type: 'number',
-  chain_id: 'numbers'
+  type: 'test',
+  chain_id: 'B'
 }, {
-  content: 'three',
+  content: 'bazB',
   timestamp: 1418804138160,
-  type: 'number',
-  chain_id: 'numbers'
+  type: 'test',
+  chain_id: 'B'
 }, {
-  content: 'A',
+  content: 'fooC',
   timestamp: 1418804138258,
-  type: 'letter',
-  chain_id: 'letters'
+  type: 'test',
+  chain_id: 'C'
 }, {
-  content: 'B',
+  content: 'barC',
   timestamp: 1418804138259,
-  type: 'letter',
-  chain_id: 'letters'
+  type: 'test',
+  chain_id: 'C'
 }, {
-  content: 'C',
+  content: 'bazC',
   timestamp: 1418804138260,
-  type: 'letter',
-  chain_id: 'letters'
+  type: 'test',
+  chain_id: 'C'
 }]
 
 var node2_messages = [{
-  content: 'Fa',
+  content: 'fooA',
   timestamp: 1418804138168,
-  type: 'holiday-carols:syllable',
-  chain_id: 'holiday-carols:2014'
+  type: 'test',
+  chain_id: 'A'
 }, {
-  content: 'La',
+  content: 'barA',
   timestamp: 1418804138169,
-  type: 'holiday-carols:syllable',
-  chain_id: 'holiday-carols:2014'
+  type: 'test',
+  chain_id: 'A'
 }, {
-  content: 'Laa',
+  content: 'bazA',
   timestamp: 1418804138170,
-  type: 'holiday-carols:syllable',
-  chain_id: 'holiday-carols:2014'
+  type: 'test',
+  chain_id: 'A'
 }, {
-  content: 'one',
+  content: 'fooB',
   timestamp: 1418804138158,
-  type: 'number',
-  chain_id: 'numbers'
+  type: 'test',
+  chain_id: 'B'
 }, {
-  content: 'two',
+  content: 'barB',
   timestamp: 1418804138159,
-  type: 'number',
-  chain_id: 'numbers'
+  type: 'test',
+  chain_id: 'B'
 }]
 
 var test = require('tape')
 var mChain = require('../../microstar-chain')
 var mCrypto = require('../../microstar-crypto')
+var mInternalChain = require('../../microstar-internal-chain')
 var mReplicate = require('../')
 var level = require('level-test')()
 var pull = require('pull-stream')
@@ -116,28 +117,19 @@ function tests (keys) {
 
   test('follow/unfollow', function (t) {
     mReplicate.followOne(node1_settings, { public_key: 'abc', chain_id: 'xyz' }, function (err) {
-      t.error(err)
-
-      pull(
-        pl.read(db1),
-        pull.collect(function (err, arr) {
-          t.error(err)
-          t.deepEqual(arr, [], 'follow')
-
-          mReplicate.unfollowOne(node1_settings, { public_key: 'abc', chain_id: 'xyz' }, function (err) {
-            t.error(err)
-
-            pull(
-              pl.read(db1),
-              pull.collect(function (err, arr) {
-                t.error(err)
-                t.deepEqual(arr, [], 'unfollow')
-                t.end()
-              })
-            )
+      if (err) { throw err }
+      mReplicate.unfollowOne(node1_settings, { public_key: 'abc', chain_id: 'xyz' }, function (err) {
+        if (err) { throw err }
+        pull(
+          mInternalChain.sequential(node1_settings, node1_settings.keys.public_key, 'microstar-replicate'),
+          pull.collect(function (err, arr) {
+            if (err) { throw err }
+            debugger
+            t.deepEqual(arr, [], 'unfollow')
+            t.end()
           })
-        })
-      )
+        )
+      })
     })
   })
 
