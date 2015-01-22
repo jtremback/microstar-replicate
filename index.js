@@ -4,7 +4,7 @@ var mInternalChain = require('../microstar-internal-chain')
 var mChain = require('../microstar-chain')
 var pull = require('pull-stream')
 var serializer = require('pull-serializer')
-// var r = require('ramda')
+var _ = require('lodash')
 var access = require('safe-access')
 // var pairs = require('pull-pairs')
 var equal = require('deep-equal')
@@ -12,7 +12,8 @@ var equal = require('deep-equal')
 // settings = {
 //   crypto: JS,
 //   keys: JS,
-//   db: db
+//   db: db,
+//   indexes: JSON
 // }
 
 module.exports = {
@@ -21,16 +22,16 @@ module.exports = {
   follow: follow,
   followOne: followOne,
   unfollow: unfollow,
-  unfollowOne: unfollowOne
+  unfollowOne: unfollowOne,
+  getAllFollowing: getAllFollowing,
+  indexes: mChain.indexes
 }
 
 // If you need indexes on all documents, export them so that they
 // can be added.
-module.exports.indexes = [
-  ['public_key', 'chain_id', 'sequence'],
-  ['public_key', 'chain_id', 'type', 'content[0]', 'sequence']
-].concat(mChain.indexes)
-
+// module.exports.indexes = [
+//   ['public_key', 'chain_id', 'type', 'content[0]', 'sequence']
+// ].concat(mChain.indexes)
 
 function follow (settings, callback) {
   return pull(
@@ -69,9 +70,17 @@ function unfollowOne (settings, id, callback) {
 //   chain_id: String
 // }, true]
 function following (settings, callback) {
+  // Add indexes to following docs
+  settings = {
+    db: settings.db,
+    keys: settings.keys,
+    crypto: settings.crypto,
+    indexes: _.cloneDeep(settings.indexes)
+  }
+  settings.indexes.push(['public_key', 'chain_id', 'type', 'content[0]', 'sequence'])
+
   return pull(
     pull.map(function (content) {
-      debugger
       return {
         type: 'microstar-replicate:follows',
         chain_id: settings.chain_id || 'microstar-replicate',
@@ -167,6 +176,6 @@ function server (settings) {
 function client (settings) {
   return serializer({
     source: getAllFollowing(settings),
-    sink: mChain.copy()
+    sink: mChain.copy(settings)
   })
 }

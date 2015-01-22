@@ -18,6 +18,8 @@
   "homepage": "https://github.com/jtremback/microstar-replicate",
   "dependencies": {
     "deep-equal": "^0.2.1",
+    "lodash": "^2.4.1",
+    "lodash.clonedeep": "^2.4.1",
     "pull-serializer": "^0.3.1",
     "pull-stream": "^2.26.0",
     "safe-access": "^0.1.0"
