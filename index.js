@@ -8,6 +8,9 @@ var _ = require('lodash')
 var access = require('safe-access')
 // var pairs = require('pull-pairs')
 var equal = require('deep-equal')
+var dump = require('level-dump')
+require('longjohn')
+
 
 // settings = {
 //   crypto: JS,
@@ -24,14 +27,9 @@ module.exports = {
   unfollow: unfollow,
   unfollowOne: unfollowOne,
   getAllFollowing: getAllFollowing,
+  filterFirst: filterFirst,
   indexes: mChain.indexes
 }
-
-// If you need indexes on all documents, export them so that they
-// can be added.
-// module.exports.indexes = [
-//   ['public_key', 'chain_id', 'type', 'content[0]', 'sequence']
-// ].concat(mChain.indexes)
 
 function follow (settings, callback) {
   return pull(
@@ -65,9 +63,10 @@ function unfollowOne (settings, id, callback) {
   )
 }
 
+
 // [{
-//   public_key: String,
-//   chain_id: String
+//   public_key: 'abc',
+//   chain_id: 'xyz'
 // }, true]
 function following (settings, callback) {
   // Add indexes to following docs
@@ -91,37 +90,25 @@ function following (settings, callback) {
   )
 }
 
-// Retrieves the last message of every group.
-// Groups are determined by testing the equality of
-// a keypath. For instance, the keypath could be a chain_id.
-// {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
-//    ^                       ^               ^
-// function groupLast0 (keypath) {
-//   return pull(
-//     pairs(function mapper (a, b) {
-//       if (!equal(access(a, keypath), access(b, keypath))) {
-//         return a
-//       }
-//       return false
-//     }),
-//     pull.filter(r.identity)
-//   )
-// }
-
 // Return a stream of the last message of every group.
 // Groups are determined by testing the equality of
 // a keypath. For instance, the keypath could be a chain_id.
 // {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
-//     ^                          ^                 ^
-function groupLast (keypath) {
-  var prev
+//     ^        ^                          ^
+function filterFirst (keypath) {
+  var previous
   return pull(
     pull.map(function (message) {
-      if (!equal(access(prev, keypath), access(message, keypath))) {
-        return prev
+      var ret
+      if (!equal(access(previous, keypath), access(message, keypath))) {
+        ret = message
+        previous = message
+      } else {
+        ret = false
+        previous = message
       }
-      prev = message
-      return false
+
+      return ret
     }),
     pull.filter(function (a) {
       return a
@@ -135,13 +122,15 @@ function getAllFollowing (settings) {
     // Get following messages from self
     mInternalChain.read(settings, {
       k: ['public_key', 'chain_id', 'type', 'content[0]', 'sequence'],
-      v: [settings.keys.public_key, chain_id, 'follows']
+      v: [settings.keys.public_key, chain_id, 'microstar-replicate:follows'],
+      reverse: true
     }),
-    // Get last (by sequence) status of every chain
-    groupLast('content[0]'),
+    // Get first (by sequence) status of every chain
+    // (Actually last, since we are reading reversed)
+    filterFirst('content[0]'),
     // Only keep chains with status = true
     pull.filter(function (message) {
-      return message.content[1]
+      return message.content && message.content[1]
     }),
     // Get latest messages in chain
     resolveLatestMessages(settings)
@@ -149,14 +138,23 @@ function getAllFollowing (settings) {
 }
 
 function resolveLatestMessages (settings) {
-  return pull.asyncMap(function (message, callback) {
-    // Get highest sequence (last message)
-    mChain.readOne(settings, {
-      k: ['public_key', 'chain_id', 'sequence'],
-      v: [message.content[1].public_key, message.content[1].chain_id],
-      peek: 'last'
-    }, callback)
-  })
+  return pull(
+    pull.asyncMap(function (message, callback) {
+      // Get highest sequence (last message)
+      mChain.readOne(settings, {
+        k: ['public_key', 'chain_id', 'sequence'],
+        v: [message.content[0].public_key, message.content[0].chain_id],
+        peek: 'last'
+      }, function (err, msg) {
+        callback(err, {
+          public_key: message.content[0].public_key,
+          chain_id: message.content[0].chain_id,
+          // Use sequence, or start at zero
+          sequence: (msg && msg.sequence) || 0
+        })
+      })
+    })
+  )
 }
 
 function server (settings) {
