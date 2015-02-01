@@ -163,12 +163,10 @@ function tests (node1_keys, node2_keys) {
     // t.plan(2)
     mReplicate.followOne(node1_settings, { public_key: node2_keys.public_key, chain_id: 'A' }, function (err) {
       if (err) { throw err }
-      console.log('first'.cyan)
       pull(
         mReplicate.getAllFollowing(node1_settings),
         pull.collect(function (err, arr) {
           if (err) { throw err }
-          console.log('second'.cyan)
           console.log(arr)
         })
       )
