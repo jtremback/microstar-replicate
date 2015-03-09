@@ -87,8 +87,10 @@ var test = require('tape')
 var mChain = require('../../microstar-chain')
 var mCrypto = require('../../microstar-crypto')
 var mInternalChain = require('../../microstar-internal-chain')
+var pl = require('pull-level')
 var mReplicate = require('../')
-require('colors')
+var async = require('async')
+
 // var level = require('level-test')()
 
 var level = require('level')
@@ -97,7 +99,6 @@ rimraf.sync('./test1.db')
 rimraf.sync('./test2.db')
 
 var pull = require('pull-stream')
-var dump = require('level-dump')
 
 var db1 = level('./test1.db', { valueEncoding: 'json' })
 var db2 = level('./test2.db', { valueEncoding: 'json' })
@@ -135,14 +136,14 @@ function tests (node1_keys, node2_keys) {
     crypto: mCrypto,
     keys: node1_keys,
     db: db1,
-    indexes: mChain.indexes
+    index_defs: mChain.index_defs
   }
 
   var node2_settings = {
     crypto: mCrypto,
     keys: node2_keys,
     db: db2,
-    indexes: mChain.indexes
+    index_defs: mChain.index_defs
   }
 
   test('setup', function (t) {
@@ -150,54 +151,96 @@ function tests (node1_keys, node2_keys) {
 
     pull(
       pull.values(node1_messages),
-      mChain.write(node1_settings, t.error)
+      mChain.write(node1_settings, function (err) {
+        t.error(err)
+      })
     )
 
     pull(
       pull.values(node2_messages),
-      mChain.write(node2_settings, t.error)
+      mChain.write(node2_settings, function (err) {
+        t.error(err)
+      })
     )
   })
 
+  // test('saved', function (t) {
+  //   t.plan(2)
+
+  //   pull(
+  //     pl.read(node1_settings.db),
+  //     pull.collect(function (err, arr) {
+  //       console.log(arr)
+  //       t.error(err)
+  //     })
+  //   )
+
+  //   pull(
+  //     pl.read(node2_settings.db),
+  //     pull.collect(function (err, arr) {
+  //       console.log(arr)
+  //       t.error(err)
+  //     })
+  //   )
+  // })
+
   test('follow/unfollow', function (t) {
-    // t.plan(2)
-    mReplicate.followOne(node1_settings, { public_key: node2_keys.public_key, chain_id: 'A' }, function (err) {
+    mReplicate.followOne(node1_settings, {
+      public_key: node2_keys.public_key,
+      chain_id: 'A'
+    }, function (err) {
       if (err) { throw err }
       pull(
         mReplicate.getAllFollowing(node1_settings),
         pull.collect(function (err, arr) {
           if (err) { throw err }
-          console.log(arr)
+          t.deepEqual(arr, [{
+            public_key: 'rFdhKtLmcstNXIuItYKQChg/ksjL6Y6Jt7HS1tgT7Sk=IPQS5tuF8v+tf/9EJkpehov/Aru7a/Ubp7sHUgUrVDg=',
+            chain_id: 'A',
+            sequence: 0
+          }], 'replication message is generated after follow')
         })
       )
-      // mReplicate.unfollowOne(node1_settings, { public_key: node2_keys.public_key, chain_id: 'A' }, function (err) {
-      //   if (err) { throw err }
-      //   console.log('third'.cyan)
-      //   pull(
-      //     mReplicate.getAllFollowing(node1_settings),
-      //     pull.collect(function (err, arr) {
-      //       if (err) { throw err }
-      //       console.log('four'.cyan)
-      //       console.log(arr)
-      //     })
-      //   )
-      // })
+      mReplicate.unfollowOne(node1_settings, {
+        public_key: node2_keys.public_key,
+        chain_id: 'A'
+      }, function (err) {
+        if (err) { throw err }
+        pull(
+          mReplicate.getAllFollowing(node1_settings),
+          pull.collect(function (err, arr) {
+            if (err) { throw err }
+            t.deepEqual(arr, [], 'no replication message after unfollow')
+            t.end()
+          })
+        )
+      })
     })
   })
 
-  // test('replicate', function () {
-  //   // ws.createServer(function (stream) {
-  //   //   pull(stream, mReplicate.server(node1_settings), stream)
-  //   // }).listen(9999)
+  test('replicate', function (t) {
+    mReplicate.followOne(node1_settings, {
+      public_key: node2_keys.public_key,
+      chain_id: 'A'
+    }, function (err) {
+      if (err) { throw err }
 
-  //   // var stream = ws.connect('ws://localhost:9999')
+      pull(
+        mReplicate.client(node1_settings),
+        mReplicate.server(node2_settings),
+        mReplicate.client(node1_settings, function () {
 
-  //   // pull(stream, mReplicate.client(node2_settings), stream)
+        })
+      )
+    })
 
-  //   pull(
-  //     mReplicate.client(node2_settings),
-  //     mReplicate.server(node1_settings),
-  //     mReplicate.client(node2_settings)
-  //   )
-  // })
+    t.end()
+    // ws.createServer(function (stream) {
+    //   pull(stream, mReplicate.server(node1_settings), stream)
+    // }).listen(9999)
+
+    // var stream = ws.connect('ws://localhost:9999')
+
+    // pull(stream, mReplicate.client(node2_settings), stream)
+  })
 }

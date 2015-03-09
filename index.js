@@ -6,17 +6,13 @@ var pull = require('pull-stream')
 var serializer = require('pull-serializer')
 var _ = require('lodash')
 var access = require('safe-access')
-// var pairs = require('pull-pairs')
 var equal = require('deep-equal')
-var dump = require('level-dump')
-require('longjohn')
-
 
 // settings = {
 //   crypto: JS,
 //   keys: JS,
 //   db: db,
-//   indexes: JSON
+//   index_defs: JSON
 // }
 
 module.exports = {
@@ -28,7 +24,7 @@ module.exports = {
   unfollowOne: unfollowOne,
   getAllFollowing: getAllFollowing,
   filterFirst: filterFirst,
-  indexes: mChain.indexes
+  index_defs: mChain.index_defs
 }
 
 function follow (settings, callback) {
@@ -69,14 +65,14 @@ function unfollowOne (settings, id, callback) {
 //   chain_id: 'xyz'
 // }, true]
 function following (settings, callback) {
-  // Add indexes to following docs
+  // Add index_defs to following docs
   settings = {
     db: settings.db,
     keys: settings.keys,
     crypto: settings.crypto,
-    indexes: _.cloneDeep(settings.indexes)
+    index_defs: _.cloneDeep(settings.index_defs)
   }
-  settings.indexes.push(['public_key', 'chain_id', 'type', 'content[0]', 'sequence'])
+  settings.index_defs.push(['public_key', 'chain_id', 'type', 'content[0]', 'sequence'])
 
   return pull(
     pull.map(function (content) {
@@ -171,9 +167,9 @@ function server (settings) {
   )
 }
 
-function client (settings) {
+function client (settings, callback) {
   return serializer({
     source: getAllFollowing(settings),
-    sink: mChain.copy(settings)
+    sink: mChain.copy(settings, callback)
   })
 }

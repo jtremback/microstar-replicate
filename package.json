@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/jtremback/microstar-replicate",
   "dependencies": {
+    "async": "^0.9.0",
     "deep-equal": "^0.2.1",
     "lodash": "^2.4.1",
     "lodash.clonedeep": "^2.4.1",
@@ -26,8 +27,11 @@
     "stable-stringify": "^1.0.0"
   },
   "devDependencies": {
+    "level": "^0.18.0",
     "level-test": "^1.6.6",
     "pull-level": "^1.2.0",
-    "pull-ws-server": "^1.1.2"
+    "pull-ws-server": "^1.1.2",
+    "rimraf": "^2.3.1",
+    "tape": "^3.5.0"
   }
 }
