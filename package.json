@@ -4,7 +4,8 @@
   "description": "This replicates feeds between microstar nodes.",
   "main": "index.js",
   "scripts": {
-    "test": "node test/"
+    "test": "node test/",
+    "debug-test": "forever -c \"node --debug-brk\" test/"
   },
   "repository": {
     "type": "git",
@@ -27,6 +28,7 @@
     "stable-stringify": "^1.0.0"
   },
   "devDependencies": {
+    "get-trace": "^1.0.1",
     "level": "^0.18.0",
     "level-test": "^1.6.6",
     "pull-level": "^1.2.0",

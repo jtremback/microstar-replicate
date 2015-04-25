@@ -16,7 +16,9 @@ var equal = require('deep-equal')
 // }
 
 module.exports = {
-  client: client,
+  // client: client,
+  clientRequest: clientRequest,
+  clientResponse: clientResponse,
   server: server,
   follow: follow,
   followOne: followOne,
@@ -27,43 +29,68 @@ module.exports = {
   index_defs: mChain.index_defs
 }
 
+
+
+// {
+//   public_key: String,
+//   chain_id: String
+// }
 function follow (settings, callback) {
   return pull(
-    pull.map(function (id) {
-      return [id, true]
+    pull.map(function (identity) {
+      return [identity, true]
     }),
     following(settings, callback)
   )
 }
+// [{
+//   public_key: String,
+//   chain_id: String
+// }, true]
 
-function followOne (settings, id, callback) {
+
+
+function followOne (settings, identity, callback) {
   pull(
-    pull.values([id]),
+    pull.values([identity]),
     follow(settings, callback)
   )
 }
 
+
+
+// {
+//   public_key: String,
+//   chain_id: String
+// }
 function unfollow (settings, callback) {
   return pull(
-    pull.map(function (id) {
-      return [id, false]
+    pull.map(function (identity) {
+      return [identity, false]
     }),
     following(settings, callback)
   )
 }
+// [{
+//   public_key: String,
+//   chain_id: String
+// }, false]
 
-function unfollowOne (settings, id, callback) {
+
+
+function unfollowOne (settings, identity, callback) {
   pull(
-    pull.values([id]),
+    pull.values([identity]),
     unfollow(settings, callback)
   )
 }
 
 
+
 // [{
-//   public_key: 'abc',
-//   chain_id: 'xyz'
-// }, true]
+//   public_key: String,
+//   chain_id: String
+// }, Boolean]
 function following (settings, callback) {
   // Add index_defs to following docs
   settings = {
@@ -85,12 +112,24 @@ function following (settings, callback) {
     mInternalChain.write(settings, callback)
   )
 }
+// {
+//   type: String,
+//   chain_id: String,
+//   content: [{
+//     public_key: String,
+//     chain_id: String
+//   }, Boolean]
+// }
+
+
 
 // Return a stream of the last message of every group.
 // Groups are determined by testing the equality of
 // a keypath. For instance, the keypath could be a chain_id.
 // {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
 //     ^        ^                          ^
+//
+//
 function filterFirst (keypath) {
   var previous
   return pull(
@@ -111,6 +150,7 @@ function filterFirst (keypath) {
     })
   )
 }
+
 
 function getAllFollowing (settings) {
   var chain_id = settings.chain_id || 'microstar-replicate'
@@ -133,6 +173,18 @@ function getAllFollowing (settings) {
   )
 }
 
+
+
+// {
+//   "content": [
+//     {
+//       "public_key": String,
+//       "chain_id": String
+//     },
+//     Boolean
+//   ],
+//   ...
+// }
 function resolveLatestMessages (settings) {
   return pull(
     pull.asyncMap(function (message, callback) {
@@ -152,24 +204,44 @@ function resolveLatestMessages (settings) {
     })
   )
 }
+// {
+//   public_key: String,
+//   chain_id: String,
+//   sequence: Number
+// }
+
+
 
 function server (settings) {
   return pull(
-    pull.map(function (message) {
+    pull.asyncMap(function (message, callback) {
+      message = JSON.parse(message)
       // Gather all messages later than latest
       pull(
         mChain.sequential(settings, message.public_key, message.chain_id, message.sequence),
         pull.collect(function (err, arr) {
-          return arr
+          callback(err, JSON.stringify(arr))
         })
       )
     })
   )
 }
 
-function client (settings, callback) {
-  return serializer({
-    source: getAllFollowing(settings),
-    sink: mChain.copy(settings, callback)
-  })
+function clientRequest (settings) {
+  return pull(
+    getAllFollowing(settings),
+    pull.map(function (data) {
+      return JSON.stringify(data)
+    })
+  )
+}
+
+function clientResponse (settings, callback) {
+  return pull(
+    pull.map(function (data) {
+      debugger
+      return JSON.parse(data)
+    }),
+    mChain.copy(settings, callback)
+  )
 }

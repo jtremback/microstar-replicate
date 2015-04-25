@@ -9,7 +9,7 @@
 // Three feeds exist. A is entirely on both nodes, B is entirely on one
 // and partially on the other, and C is only on one node.
 
-var node1_messages = [{
+var messages1 = [{
   content: 'fooA',
   timestamp: 1418804138168,
   type: 'test',
@@ -56,7 +56,7 @@ var node1_messages = [{
   chain_id: 'C'
 }]
 
-var node2_messages = [{
+var messages2 = [{
   content: 'fooA',
   timestamp: 1418804138168,
   type: 'test',
@@ -90,15 +90,38 @@ var mInternalChain = require('../../microstar-internal-chain')
 var pl = require('pull-level')
 var mReplicate = require('../')
 var async = require('async')
+var pull = require('pull-stream')
+
+var trace = require('get-trace')
+
+function tracify (t) {
+  function attach (func) {
+    return function () {
+      var args = []
+      for (var i = 0; i < arguments.length; i++) {
+        args.push(arguments[i])
+      }
+      args.push(trace(2))
+
+      return func.apply(null, args)
+    }
+  }
+  return {
+    equal: attach(t.equal),
+    deepEqual: attach(t.deepEqual),
+    error: attach(t.error),
+    end: t.end,
+    plan: t.plan
+  }
+}
 
 // var level = require('level-test')()
-
 var level = require('level')
+
 var rimraf = require('rimraf')
 rimraf.sync('./test1.db')
 rimraf.sync('./test2.db')
 
-var pull = require('pull-stream')
 
 var db1 = level('./test1.db', { valueEncoding: 'json' })
 var db2 = level('./test2.db', { valueEncoding: 'json' })
@@ -146,23 +169,23 @@ function tests (node1_keys, node2_keys) {
     index_defs: mChain.index_defs
   }
 
-  test('setup', function (t) {
-    t.plan(2)
+  // test('setup', function (t) {
+  //   t.plan(2)
 
-    pull(
-      pull.values(node1_messages),
-      mChain.write(node1_settings, function (err) {
-        t.error(err)
-      })
-    )
+  //   pull(
+  //     pull.values(messages1),
+  //     mChain.write(node1_settings, function (err) {
+  //       t.error(err)
+  //     })
+  //   )
 
-    pull(
-      pull.values(node2_messages),
-      mChain.write(node2_settings, function (err) {
-        t.error(err)
-      })
-    )
-  })
+  //   // pull(
+  //   //   pull.values(node2_messages),
+  //   //   mChain.write(node2_settings, function (err) {
+  //   //     t.error(err)
+  //   //   })
+  //   // )
+  // })
 
   // test('saved', function (t) {
   //   t.plan(2)
@@ -185,6 +208,7 @@ function tests (node1_keys, node2_keys) {
   // })
 
   test('follow/unfollow', function (t) {
+    t = tracify(t)
     mReplicate.followOne(node1_settings, {
       public_key: node2_keys.public_key,
       chain_id: 'A'
@@ -219,6 +243,18 @@ function tests (node1_keys, node2_keys) {
   })
 
   test('replicate', function (t) {
+    t = tracify(t)
+    pull(
+      pull.values(messages2),
+      mChain.write(node2_settings, function (err) {
+        t.error(err)
+        t.end()
+      })
+    )
+  })
+
+  test('replicate', function (t) {
+    t = tracify(t)
     mReplicate.followOne(node1_settings, {
       public_key: node2_keys.public_key,
       chain_id: 'A'
@@ -226,10 +262,19 @@ function tests (node1_keys, node2_keys) {
       if (err) { throw err }
 
       pull(
-        mReplicate.client(node1_settings),
+        mReplicate.clientRequest(node1_settings),
         mReplicate.server(node2_settings),
-        mReplicate.client(node1_settings, function () {
-
+        mReplicate.clientResponse(node1_settings, function (err) {
+          var stringify = require('stable-stringify')
+          function dwrite (data) {
+            console.log(stringify(data, { space: '  ' }))
+          }
+          var dump = require('level-dump')
+          dump(db2, dwrite, function (err) {
+            if (err) { throw err }
+            console.log('\n\n\n\n\n\n\n\nhellop')
+            dump(db1, dwrite, function () {})
+          })
         })
       )
     })
