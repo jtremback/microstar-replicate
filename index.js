@@ -128,8 +128,6 @@ function following (settings, callback) {
 // a keypath. For instance, the keypath could be a chain_id.
 // {id: 1}, {id: 2}, {id: 2}, {id: 2}, {id: 3}, {id: 3},
 //     ^        ^                          ^
-//
-//
 function filterFirst (keypath) {
   var previous
   return pull(
@@ -219,29 +217,24 @@ function server (settings) {
       // Gather all messages later than latest
       pull(
         mChain.sequential(settings, message.public_key, message.chain_id, message.sequence),
-        pull.collect(function (err, arr) {
-          callback(err, JSON.stringify(arr))
-        })
+        pull.collect(callback)
       )
-    })
+    }),
+    pull.flatten(),
+    pull.map(JSON.stringify)
   )
 }
 
 function clientRequest (settings) {
   return pull(
     getAllFollowing(settings),
-    pull.map(function (data) {
-      return JSON.stringify(data)
-    })
+    pull.map(JSON.stringify)
   )
 }
 
 function clientResponse (settings, callback) {
   return pull(
-    pull.map(function (data) {
-      debugger
-      return JSON.parse(data)
-    }),
+    pull.map(JSON.parse),
     mChain.copy(settings, callback)
   )
 }
