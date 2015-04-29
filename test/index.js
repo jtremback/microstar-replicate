@@ -9,7 +9,7 @@
 // Three feeds exist. A is entirely on both nodes, B is entirely on one
 // and partially on the other, and C is only on one node.
 
-var messages1 = [{
+var chainA = [{
   content: 'fooA',
   timestamp: 1418804138168,
   type: 'test',
@@ -24,7 +24,9 @@ var messages1 = [{
   timestamp: 1418804138170,
   type: 'test',
   chain_id: 'A'
-}, {
+}]
+
+var chainB = [{
   content: 'fooB',
   timestamp: 1418804138158,
   type: 'test',
@@ -39,7 +41,9 @@ var messages1 = [{
   timestamp: 1418804138160,
   type: 'test',
   chain_id: 'B'
-}, {
+}]
+
+var chainC = [{
   content: 'fooC',
   timestamp: 1418804138258,
   type: 'test',
@@ -56,38 +60,10 @@ var messages1 = [{
   chain_id: 'C'
 }]
 
-var messages2 = [{
-  content: 'fooA',
-  timestamp: 1418804138168,
-  type: 'test',
-  chain_id: 'A'
-}, {
-  content: 'barA',
-  timestamp: 1418804138169,
-  type: 'test',
-  chain_id: 'A'
-}, {
-  content: 'bazA',
-  timestamp: 1418804138170,
-  type: 'test',
-  chain_id: 'A'
-}, {
-  content: 'fooB',
-  timestamp: 1418804138158,
-  type: 'test',
-  chain_id: 'B'
-}, {
-  content: 'barB',
-  timestamp: 1418804138159,
-  type: 'test',
-  chain_id: 'B'
-}]
 
 var test = require('tape')
 var mChain = require('../../microstar-chain')
 var mCrypto = require('../../microstar-crypto')
-var mInternalChain = require('../../microstar-internal-chain')
-var pl = require('pull-level')
 var mReplicate = require('../')
 var async = require('async')
 var pull = require('pull-stream')
@@ -134,27 +110,6 @@ mCrypto.keys('h4dfDIR+i3JfCw1T2jKr/SS/PJttebGfMMGwBvhOzS4=', function (err, node
 
 function tests (node1_keys, node2_keys) {
 
-  // test('filterFirst', function (t) {
-  //   var values = [
-  //     { 'id': 'C', 'seq': 2 },
-  //     { 'id': 'C', 'seq': 1 },
-  //     { 'id': 'B', 'seq': 3 },
-  //     { 'id': 'B', 'seq': 2 },
-  //     { 'id': 'B', 'seq': 1 },
-  //     { 'id': 'A', 'seq': 1 }
-  //   ]
-
-  //   pull(
-  //     pull.values(values),
-  //     mReplicate.filterFirst('id'),
-  //     pull.collect(function (err, arr) {
-  //       if (err) { throw err }
-  //       console.log(arr)
-  //       t.end()
-  //     })
-  //   )
-  // })
-
   var node1_settings = {
     crypto: mCrypto,
     keys: node1_keys,
@@ -168,44 +123,6 @@ function tests (node1_keys, node2_keys) {
     db: db2,
     index_defs: mChain.index_defs
   }
-
-  // test('setup', function (t) {
-  //   t.plan(2)
-
-  //   pull(
-  //     pull.values(messages1),
-  //     mChain.write(node1_settings, function (err) {
-  //       t.error(err)
-  //     })
-  //   )
-
-  //   // pull(
-  //   //   pull.values(node2_messages),
-  //   //   mChain.write(node2_settings, function (err) {
-  //   //     t.error(err)
-  //   //   })
-  //   // )
-  // })
-
-  // test('saved', function (t) {
-  //   t.plan(2)
-
-  //   pull(
-  //     pl.read(node1_settings.db),
-  //     pull.collect(function (err, arr) {
-  //       console.log(arr)
-  //       t.error(err)
-  //     })
-  //   )
-
-  //   pull(
-  //     pl.read(node2_settings.db),
-  //     pull.collect(function (err, arr) {
-  //       console.log(arr)
-  //       t.error(err)
-  //     })
-  //   )
-  // })
 
   test('follow/unfollow', function (t) {
     t = tracify(t)
@@ -244,42 +161,54 @@ function tests (node1_keys, node2_keys) {
 
   test('replicate', function (t) {
     t = tracify(t)
-    pull(
-      pull.values(messages2),
-      mChain.write(node2_settings, function (err) {
-        t.error(err)
-        t.end()
-      })
-    )
-  })
-
-  test('replicate', function (t) {
-    t = tracify(t)
-    mReplicate.followOne(node1_settings, {
-      public_key: node2_keys.public_key,
-      chain_id: 'A'
-    }, function (err) {
-      if (err) { throw err }
-
+debugger
+    async.series([
+      async.apply(write, node1_settings, chainA),
+      async.apply(write, node1_settings, chainB.slice(0, 2)),
+      async.apply(follow, node2_settings, node1_keys.public_key, 'A'),
+      async.apply(follow, node2_settings, node1_keys.public_key, 'B'),
+      async.apply(follow, node2_settings, node1_keys.public_key, 'C'),
+      async.apply(replicate, node1_settings, node2_settings)
+    ], function (err) {
       pull(
-        mReplicate.clientRequest(node1_settings),
-        mReplicate.server(node2_settings),
-        mReplicate.clientResponse(node1_settings, function (err) {
-          var stringify = require('stable-stringify')
-          function dwrite (data) {
-            console.log(stringify(data, { space: '  ' }))
-          }
-          var dump = require('level-dump')
-          dump(db2, dwrite, function (err) {
-            if (err) { throw err }
-            console.log('\n\n\n\n\n\n\n\nhellop')
-            dump(db1, dwrite, function () {})
-          })
-        })
+        mReplicate.getAllFollowing(node2_settings),
+        pull.collect(console.log)
       )
+      sequential(node2_settings, node1_keys.public_key, 'A', 0, console.log)
+      sequential(node2_settings, node1_keys.public_key, 'B', 0, console.log)
     })
 
-    t.end()
+    function sequential (settings, public_key, chain_id, sequence, callback) {
+      pull(
+        mChain.sequential(settings, public_key, chain_id, sequence),
+        pull.collect(callback)
+      )
+    }
+
+    function write (settings, messages, callback) {
+      debugger
+      pull(
+        pull.values(messages),
+        mChain.write(settings, callback)
+      )
+    }
+    function follow (settings, public_key, chain_id, callback) {
+      debugger
+      mReplicate.followOne(settings, {
+        public_key: public_key,
+        chain_id: chain_id
+      }, callback)
+    }
+    function replicate (from, to, callback) {
+      debugger
+      pull(
+        mReplicate.clientRequest(to),
+        mReplicate.server(from),
+        mReplicate.clientResponse(to, callback)
+      )
+    }
+
+    // t.end()
     // ws.createServer(function (stream) {
     //   pull(stream, mReplicate.server(node1_settings), stream)
     // }).listen(9999)
